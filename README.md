@@ -60,7 +60,7 @@ Desenvolver uma aplicação simples de gerenciamento de produtos, com foco em:
 ### 1. Clonar o repositório
 
 ```bash
-git clone <url-do-repositorio>
+git clone https://github.com/and1ssu/product-crud-back
 cd produtos-back
 ```
 
