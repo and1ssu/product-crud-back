@@ -1,17 +1,24 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Prisma, ProductStatus } from '@prisma/client';
 import { mockDeep, DeepMockProxy } from 'jest-mock-extended';
 import { AppException } from '../common/exceptions/app.exception';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProductsService } from './products.service';
+type ProductWithCategories = Prisma.ProductGetPayload<{
+  include: { categories: { include: { category: true } } };
+}>;
 
-const makeProduct = (overrides = {}) => ({
+const makeProduct = (
+  overrides: Partial<ProductWithCategories> = {},
+): ProductWithCategories => ({
   id: 1,
   name: 'Produto Teste',
   description: null,
-  price: '100.00' as any,
+  price: new Prisma.Decimal('100.00'),
   stock: 0,
-  status: 'ACTIVE' as any,
+  status: ProductStatus.ACTIVE,
+  ownerId: 'user-1',
   createdAt: new Date(),
   updatedAt: new Date(),
   categories: [],
@@ -48,10 +55,17 @@ describe('ProductsService', () => {
     });
 
     it('creates a product when all categories exist', async () => {
-      const cat = { id: 'cat-1' } as any;
+      const cat = {
+        id: 'cat-1',
+        name: 'Categoria Teste',
+        description: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        parentId: null,
+        ownerId: null,
+      };
       prisma.category.findMany.mockResolvedValueOnce([cat]);
-      prisma.product.create.mockResolvedValueOnce(makeProduct() as any);
-
+      prisma.product.create.mockResolvedValueOnce(makeProduct());
       const result = await service.create({
         name: 'Test',
         price: 100,
@@ -59,7 +73,7 @@ describe('ProductsService', () => {
       }, 'user-1');
 
       expect(result).toBeDefined();
-      expect(prisma.product.create).toHaveBeenCalledTimes(1);
+      expect(prisma.product.create.mock.calls).toHaveLength(1);
     });
   });
 
@@ -70,7 +84,7 @@ describe('ProductsService', () => {
     });
 
     it('returns the product when found', async () => {
-      prisma.product.findUnique.mockResolvedValueOnce(makeProduct() as any);
+      prisma.product.findUnique.mockResolvedValueOnce(makeProduct());
       const result = await service.findOne(1);
       expect(result).toBeDefined();
     });
@@ -83,15 +97,15 @@ describe('ProductsService', () => {
     });
 
     it('returns { deleted: true } on success', async () => {
-      prisma.product.findUnique.mockResolvedValueOnce(makeProduct({ ownerId: 'user-1' }) as any);
-      prisma.product.delete.mockResolvedValueOnce(makeProduct() as any);
+      prisma.product.findUnique.mockResolvedValueOnce(makeProduct({ ownerId: 'user-1' }));
+      prisma.product.delete.mockResolvedValueOnce(makeProduct());
 
       const result = await service.remove(1, 'user-1');
       expect(result).toEqual({ deleted: true });
     });
 
     it('throws AppException when requester is not the owner', async () => {
-      prisma.product.findUnique.mockResolvedValueOnce(makeProduct({ ownerId: 'user-1' }) as any);
+      prisma.product.findUnique.mockResolvedValueOnce(makeProduct({ ownerId: 'user-1' }));
 
       await expect(service.remove(1, 'other-user')).rejects.toThrow(AppException);
     });
@@ -100,9 +114,9 @@ describe('ProductsService', () => {
   describe('findAll', () => {
     it('returns paginated results', async () => {
       prisma.$transaction.mockResolvedValueOnce([
-        [makeProduct(), makeProduct()],
+        [makeProduct(), makeProduct({ id: 2, name: 'Produto Teste 2' })],
         2,
-      ] as any);
+      ] as [ProductWithCategories[], number]);
 
       const result = await service.findAll({ page: 1, limit: 10 });
       expect(result.data).toHaveLength(2);

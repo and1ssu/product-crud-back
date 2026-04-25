@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -16,11 +17,16 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CategoriesService } from './categories.service';
 import { CategoryQueryDto } from './dto/category-query.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+
+interface AuthenticatedRequest extends Request {
+  user: { userId: string; email: string };
+}
 
 @ApiTags('category')
 @Controller('category')
@@ -48,31 +54,34 @@ export class CategoriesController {
   @ApiResponse({ status: 409, description: 'Category name already exists' })
   @UseGuards(JwtAuthGuard)
   @Post()
-  create(@Body() dto: CreateCategoryDto) {
-    return this.categoriesService.create(dto);
+  create(@Body() dto: CreateCategoryDto, @Req() req: AuthenticatedRequest) {
+    return this.categoriesService.create(dto, req.user.userId);
   }
 
   @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Update a category' })
   @ApiResponse({ status: 200, description: 'Category updated' })
   @ApiResponse({ status: 400, description: 'Circular hierarchy detected' })
+  @ApiResponse({ status: 403, description: 'Not the category owner' })
   @ApiResponse({ status: 404, description: 'Category not found' })
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCategoryDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.categoriesService.update(id, dto);
+    return this.categoriesService.update(id, dto, req.user.userId);
   }
 
   @ApiCookieAuth('access_token')
   @ApiOperation({ summary: 'Delete a category' })
   @ApiResponse({ status: 200, description: 'Category deleted' })
+  @ApiResponse({ status: 403, description: 'Not the category owner' })
   @ApiResponse({ status: 404, description: 'Category not found' })
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.categoriesService.remove(id);
+  remove(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthenticatedRequest) {
+    return this.categoriesService.remove(id, req.user.userId);
   }
 }

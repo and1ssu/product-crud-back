@@ -34,6 +34,11 @@ export class ProductQueryDto {
   @IsOptional()
   status?: ProductStatus;
 
+  @ApiPropertyOptional({ example: 'uuid-of-owner' })
+  @IsUUID()
+  @IsOptional()
+  ownerId?: string;
+
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'desc' })
   @IsIn(['asc', 'desc'])
   @IsOptional()

@@ -22,7 +22,8 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  products Product[]
+  products   Product[]
+  categories Category[]
 
   @@map("users")
 }
@@ -34,6 +35,8 @@ model Category {
   parentId    String?
   parent      Category?  @relation("children", fields: [parentId], references: [id])
   children    Category[] @relation("children")
+  ownerId     String?
+  owner       User?      @relation(fields: [ownerId], references: [id])
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

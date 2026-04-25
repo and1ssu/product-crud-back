@@ -1,9 +1,34 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Category, Prisma } from '@prisma/client';
 import { mockDeep, DeepMockProxy } from 'jest-mock-extended';
 import { AppException } from '../common/exceptions/app.exception';
 import { PrismaService } from '../prisma/prisma.service';
 import { CategoriesService } from './categories.service';
+type CategoryWithRelations = Prisma.CategoryGetPayload<{
+  include: { children: true; parent: true };
+}>;
+
+
+const makeCategory = (overrides: Partial<Category> = {}): Category => ({
+  id: 'category-id',
+  name: 'Category',
+  description: null,
+  parentId: null,
+  ownerId: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+});
+
+const makeCategoryWithRelations = (
+  overrides: Partial<CategoryWithRelations> = {},
+): CategoryWithRelations => ({
+  ...makeCategory(),
+  children: [],
+  parent: null,
+  ...overrides,
+});
 
 describe('CategoriesService', () => {
   let service: CategoriesService;
@@ -23,56 +48,47 @@ describe('CategoriesService', () => {
 
   describe('detectHierarchyLoop (via update)', () => {
     it('throws AppException when category is in its own ancestor chain', async () => {
-      const catA = { id: 'A', name: 'A', description: null, parentId: null, createdAt: new Date(), updatedAt: new Date() };
-      const catB = { id: 'B', name: 'B', description: null, parentId: 'A', createdAt: new Date(), updatedAt: new Date() };
-      const catC = { id: 'C', name: 'C', description: null, parentId: 'B', createdAt: new Date(), updatedAt: new Date() };
+      const catA = makeCategory({ id: 'A', name: 'A', ownerId: 'user-1' });
+      const catC = makeCategory({ id: 'C', name: 'C', parentId: 'B' });
 
       // findOne for existing check
-      prisma.category.findUnique.mockResolvedValueOnce({
+      prisma.category.findUnique.mockResolvedValueOnce(makeCategoryWithRelations({
         ...catA,
-        children: [],
-        parent: null,
-        products: [],
-      } as any);
+      }));
 
       // ensureParentExists → C exists
-      prisma.category.findUnique.mockResolvedValueOnce(catC as any);
+      prisma.category.findUnique.mockResolvedValueOnce(catC);
 
       // detectHierarchyLoop: walk from C → parentId=B → parentId=A === 'A' (categoryId)
-      prisma.category.findUnique.mockResolvedValueOnce({ parentId: 'B' } as any);
-      prisma.category.findUnique.mockResolvedValueOnce({ parentId: 'A' } as any);
+      prisma.category.findUnique.mockResolvedValueOnce(makeCategory({ id: 'B', parentId: 'A' }));
+      prisma.category.findUnique.mockResolvedValueOnce(makeCategory({ id: 'A', parentId: null }));
 
-      await expect(service.update('A', { parentId: 'C' })).rejects.toThrow(AppException);
+      await expect(service.update('A', { parentId: 'C' }, 'user-1')).rejects.toThrow(AppException);
     });
 
     it('does not throw when no loop exists', async () => {
-      const catA = { id: 'A', name: 'A', description: null, parentId: null, createdAt: new Date(), updatedAt: new Date() };
-      const catB = { id: 'B', name: 'B', description: null, parentId: null, createdAt: new Date(), updatedAt: new Date() };
+      const catA = makeCategory({ id: 'A', name: 'A', ownerId: 'user-1' });
+      const catB = makeCategory({ id: 'B', name: 'B' });
 
       // findOne
-      prisma.category.findUnique.mockResolvedValueOnce({
+      prisma.category.findUnique.mockResolvedValueOnce(makeCategoryWithRelations({
         ...catA,
-        children: [],
-        parent: null,
-        products: [],
-      } as any);
+      }));
 
       // ensureParentExists → B exists
-      prisma.category.findUnique.mockResolvedValueOnce(catB as any);
+      prisma.category.findUnique.mockResolvedValueOnce(catB);
 
       // detectHierarchyLoop: B has no parent → no loop
-      prisma.category.findUnique.mockResolvedValueOnce({ parentId: null } as any);
+      prisma.category.findUnique.mockResolvedValueOnce(makeCategory({ id: 'B', parentId: null }));
 
       // update call
-      prisma.category.update.mockResolvedValueOnce({
+      prisma.category.update.mockResolvedValueOnce(makeCategoryWithRelations({
         ...catA,
         parentId: 'B',
-        children: [],
         parent: catB,
-        products: [],
-      } as any);
+      }));
 
-      await expect(service.update('A', { parentId: 'B' })).resolves.toBeDefined();
+      await expect(service.update('A', { parentId: 'B' }, 'user-1')).resolves.toBeDefined();
     });
   });
 
@@ -85,11 +101,13 @@ describe('CategoriesService', () => {
 
   describe('remove', () => {
     it('returns { deleted: true } on successful deletion', async () => {
-      const cat = { id: 'X', name: 'X', description: null, parentId: null, createdAt: new Date(), updatedAt: new Date() };
-      prisma.category.findUnique.mockResolvedValueOnce({ ...cat, children: [], parent: null, products: [] } as any);
-      prisma.category.delete.mockResolvedValueOnce(cat as any);
+      const cat = makeCategory({ id: 'X', name: 'X', ownerId: 'user-1' });
+      prisma.category.findUnique.mockResolvedValueOnce(makeCategoryWithRelations({
+        ...cat,
+      }));
+      prisma.category.delete.mockResolvedValueOnce(cat);
 
-      const result = await service.remove('X');
+      const result = await service.remove('X', 'user-1');
       expect(result).toEqual({ deleted: true });
     });
   });

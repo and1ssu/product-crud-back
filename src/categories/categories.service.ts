@@ -12,11 +12,12 @@ export class CategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: CategoryQueryDto) {
-    const { page = 1, limit = 10, name, parentId } = query;
+    const { page = 1, limit = 10, name, parentId, ownerId } = query;
 
     const where: Prisma.CategoryWhereInput = {
       ...(name && { name: { contains: name, mode: 'insensitive' } }),
       ...(parentId !== undefined && { parentId }),
+      ...(ownerId && { ownerId }),
     };
 
     const [data, total] = await this.prisma.$transaction([
@@ -44,7 +45,7 @@ export class CategoriesService {
     return category;
   }
 
-  async create(dto: CreateCategoryDto) {
+  async create(dto: CreateCategoryDto, ownerId: string) {
     if (dto.parentId) {
       await this.ensureParentExists(dto.parentId);
     }
@@ -55,6 +56,7 @@ export class CategoriesService {
           name: dto.name,
           description: dto.description,
           parentId: dto.parentId,
+          ownerId,
         },
         include: { children: true, parent: true },
       });
@@ -69,8 +71,9 @@ export class CategoriesService {
     }
   }
 
-  async update(id: string, dto: UpdateCategoryDto) {
-    await this.findOne(id);
+  async update(id: string, dto: UpdateCategoryDto, requesterId: string) {
+    const existing = await this.findOne(id);
+    this.assertOwner(existing.ownerId, requesterId);
 
     if (dto.parentId) {
       await this.ensureParentExists(dto.parentId);
@@ -98,10 +101,20 @@ export class CategoriesService {
     }
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, requesterId: string) {
+    const existing = await this.findOne(id);
+    this.assertOwner(existing.ownerId, requesterId);
     await this.prisma.category.delete({ where: { id } });
     return { deleted: true };
+  }
+
+  private assertOwner(ownerId: string | null, requesterId: string): void {
+    if (ownerId !== requesterId) {
+      throw new AppException(
+        'Você não tem permissão para modificar esta categoria',
+        HttpStatus.FORBIDDEN,
+      );
+    }
   }
 
   private async ensureParentExists(parentId: string): Promise<void> {

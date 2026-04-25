@@ -27,4 +27,9 @@ export class CategoryQueryDto {
   @IsUUID()
   @IsOptional()
   parentId?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-of-owner' })
+  @IsUUID()
+  @IsOptional()
+  ownerId?: string;
 }

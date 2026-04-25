@@ -9,12 +9,24 @@ interface JwtPayload {
   email: string;
 }
 
+function readCookieToken(req: Request | undefined, cookieName: string): string | null {
+  if (!req) {
+    return null;
+  }
+  const cookies = req.cookies as unknown;
+  if (typeof cookies !== 'object' || cookies === null) {
+    return null;
+  }
+  const value = (cookies as Record<string, unknown>)[cookieName];
+  return typeof value === 'string' ? value : null;
+}
+
 @Injectable()
 export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
   constructor(configService: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
-        (req: Request) => (req?.cookies as Record<string, string>)?.refresh_token ?? null,
+        (req: Request | undefined) => readCookieToken(req, 'refresh_token'),
       ]),
       ignoreExpiration: false,
       secretOrKey: configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
@@ -26,7 +38,7 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
     req: Request,
     payload: JwtPayload,
   ): { userId: string; email: string; refreshToken: string } {
-    const refreshToken = (req.cookies as Record<string, string>)?.refresh_token;
+    const refreshToken = readCookieToken(req, 'refresh_token') ?? '';
     return { userId: payload.sub, email: payload.email, refreshToken };
   }
 }
